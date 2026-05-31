@@ -214,6 +214,38 @@ Generate a starter artifact from the template.
 python3 scripts/generate-artifact.py "My Artifact" > /tmp/artifact.html
 ```
 
+## Templates
+
+Reusable HTML templates with `{{PLACEHOLDER}}` tokens. Each template has a generation script that fills placeholders from CLI args or files, producing a ready-to-send artifact.
+
+**Pattern:**
+```
+templates/<name>.html         — HTML with {{PLACEHOLDER}} tokens
+scripts/generate-<name>.py   — fills placeholders, writes /tmp/<name>-*.html
+```
+
+### Included templates
+
+**shopping-list** — Persistent checklist with `localStorage`. Supports add/remove, progress bar, long-press to delete. Placeholders: `{{TITLE}}`, `{{STORAGE_KEY}}`, `{{DEFAULT_ITEMS_JS}}`.
+
+**recipe** — Full recipe viewer with portion scaler (1×/1.5×/2×/3×), inline countdown timers, ingredient checkboxes, step-by-step instructions, tap-to-convert (metric/imperial). Placeholders: `{{TITLE}}`, `{{STORAGE_KEY}}`, `{{SECTIONS_JSON}}`, `{{STEPS_JSON}}`, `{{NOTES_JSON}}`.
+
+**csv-viewer** — Sortable, searchable data table. Auto-detects numeric columns (right-aligned, comma-formatted), real-time search with highlighting, click-to-sort, row/column stats bar. Placeholders: `{{TITLE}}`, `{{CSV_DATA}}`.
+
+**markdown-viewer** — Renders markdown with no external dependencies. Supports headings, bold, italic, strikethrough, inline code, fenced code blocks, blockquotes, ordered/unordered lists, tables, links, horizontal rules. Placeholders: `{{TITLE}}`, `{{MARKDOWN_DATA}}`.
+
+### Usage
+
+```bash
+# Generate from data
+python3 scripts/generate-csv-viewer.py --file data.csv --title "Report"
+
+# Then deliver
+python3 scripts/send-artifact.py /tmp/csv-viewer-report.html "Report" your-domain.com <chat_id> <thread_id>
+```
+
+Each generation script supports `--file`, inline `--flags`, and `--stdin` input. Run any script with `--help` for full options.
+
 ## API
 
 ### POST /artifact
