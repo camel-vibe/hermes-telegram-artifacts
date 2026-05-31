@@ -41,7 +41,6 @@ Steps with "timer" in seconds show a countdown button. Set timer to 0 or omit fo
 """
 
 import json
-import os
 import re
 import sys
 from pathlib import Path
@@ -115,11 +114,11 @@ def generate(data, storage_key=None):
     html = html.replace("{{STEPS_JSON}}", build_steps_js(steps))
     html = html.replace("{{NOTES_JSON}}", build_notes_js(notes))
 
-    out_path = os.path.join("/tmp", f"recipe-{storage_key}.html")
+    out_path = Path("/tmp") / f"recipe-{storage_key}.html"
     with open(out_path, "w") as f:
         f.write(html)
 
-    return out_path
+    return str(out_path)
 
 
 if __name__ == "__main__":

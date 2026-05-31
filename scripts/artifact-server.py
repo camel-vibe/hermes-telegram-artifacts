@@ -96,7 +96,12 @@ def _serve(aid):
         idx = _load_index()
         if idx.get("artifacts"):
             aid = idx["artifacts"][0]["id"]
-    path = ARTIFACTS_DIR / f"{aid}.html"
+    # Sanitize: only allow alphanumeric IDs, prevent path traversal
+    if not aid.isalnum():
+        return None, aid
+    path = (ARTIFACTS_DIR / f"{aid}.html").resolve()
+    if not path.is_relative_to(ARTIFACTS_DIR.resolve()):
+        return None, aid
     if path.exists():
         return path.read_bytes(), aid
     return None, aid
@@ -154,25 +159,24 @@ def _gallery_html():
     p.append('<!DOCTYPE html><html><head>')
     p.append('<meta name="viewport" content="width=device-width,initial-scale=1">')
     p.append('<style>')
+    p.append(':root{--bg:var(--tg-theme-bg-color,#f5f5f5);--card:var(--tg-theme-section-bg-color,#ffffff);--fg:var(--tg-theme-text-color,#1a1a1a);--muted:var(--tg-theme-hint-color,#666);--accent:var(--tg-theme-accent-text-color,#0ea5e9);--border:var(--tg-theme-section-separator-color,#e0e0e0);--green:#16a34a;--red:#dc2626}')
     p.append('*{box-sizing:border-box;margin:0;padding:0}')
-    p.append('body{font-family:system-ui,-apple-system,sans-serif;background:#0d1117;color:#e6edf3;padding:16px;min-height:100vh}')
-    p.append('.header{font-size:20px;font-weight:600;margin-bottom:16px;color:#f0f6fc}')
-    p.append('.artifact{background:#161b22;border:1px solid #30363d;border-radius:8px;margin-bottom:12px;overflow:hidden}')
+    p.append('body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--fg);padding:16px;min-height:100vh}')
+    p.append('.header{font-size:20px;font-weight:600;margin-bottom:16px}')
+    p.append('.artifact{background:var(--card);border:0.5px solid var(--border);border-radius:12px;margin-bottom:12px;overflow:hidden}')
     p.append('.artifact-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;cursor:pointer;user-select:none}')
-    p.append('.artifact-header:hover{background:#1c2128}')
+    p.append('.artifact-header:hover{background:color-mix(in srgb,var(--fg) 4%,transparent)}')
     p.append('.artifact-title{font-size:15px;font-weight:500;flex:1}')
-    p.append('.artifact-age{font-size:12px;color:#8b949e;margin-right:12px}')
+    p.append('.artifact-age{font-size:12px;color:var(--muted);margin-right:12px}')
     p.append('.artifact-actions{display:flex;gap:8px}')
-    p.append('.btn{border:none;border-radius:6px;padding:6px 12px;font-size:12px;cursor:pointer;font-weight:500}')
-    p.append('.btn-open{background:#238636;color:#fff}')
-    p.append('.btn-open:hover{background:#2ea043}')
-    p.append('.btn-delete{background:transparent;color:#f85149;border:1px solid rgba(248,81,73,0.2)}')
-    p.append('.btn-delete:hover{background:rgba(248,81,73,0.13)}')
-    p.append('.artifact-frame{width:100%;border:none;display:none;background:#fff}')
+    p.append('.btn{border:none;border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer;font-weight:500}')
+    p.append('.btn-open{background:var(--green);color:#fff}')
+    p.append('.btn-delete{background:transparent;color:var(--red);border:1px solid color-mix(in srgb,var(--red) 20%,transparent)}')
+    p.append('.artifact-frame{width:100%;border:none;display:none;background:var(--bg)}')
     p.append('.artifact.open .artifact-frame{display:block}')
-    p.append('.arrow{color:#8b949e;transition:transform .15s;margin-right:8px;font-size:12px}')
+    p.append('.arrow{color:var(--muted);transition:transform .15s;margin-right:8px;font-size:12px}')
     p.append('.artifact.open .arrow{transform:rotate(90deg)}')
-    p.append('.empty{text-align:center;color:#8b949e;padding:40px 0}')
+    p.append('.empty{text-align:center;color:var(--muted);padding:40px 0}')
     p.append('</style></head><body>')
     p.append('<div class="header">Artifacts</div>')
     p.append('<div id="list"></div>')
@@ -224,6 +228,8 @@ def _gallery_html():
     p.append("else{card.classList.add('open');fr.style.display='block';fr.onload=function(){rz(fr)};}}")
     p.append('});')
     p.append("function rz(f){try{f.style.height=Math.min(f.contentDocument.body.scrollHeight+4,window.innerHeight*0.85)+'px';}catch(e){}}")
+    p.append('var tg=(window.Telegram&&window.Telegram.WebApp)?window.Telegram.WebApp:null;')
+    p.append('if(tg){try{tg.ready();tg.setHeaderColor(tg.themeParams?.bg_color||"#f5f5f5");tg.setBackgroundColor(tg.themeParams?.bg_color||"#f5f5f5");tg.onEvent("themeChanged",function(){var p=tg.themeParams;if(p){tg.setHeaderColor(p.bg_color);tg.setBackgroundColor(p.bg_color);}});}catch(e){}}')
     p.append('</script></body></html>')
     return ''.join(p)
 
@@ -313,6 +319,10 @@ class ArtifactHandler(BaseHTTPRequestHandler):
     def do_DELETE(self):
         if self.path.startswith("/artifact/"):
             aid = self.path[len("/artifact/"):]
+            # Sanitize: only allow alphanumeric IDs
+            if not aid.isalnum():
+                self._respond(400, {"error": "invalid artifact id"})
+                return
             if _delete(aid):
                 self._respond(200, {"deleted": aid})
             else:

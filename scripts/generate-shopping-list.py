@@ -20,7 +20,6 @@ JSON format:
 """
 
 import json
-import os
 import re
 import sys
 from pathlib import Path
@@ -53,11 +52,11 @@ def generate(title, items, storage_key=None):
     html = html.replace("{{STORAGE_KEY}}", storage_key)
     html = html.replace("{{DEFAULT_ITEMS_JS}}", items_js)
 
-    out_path = os.path.join("/tmp", f"shopping-{storage_key}.html")
+    out_path = Path("/tmp") / f"shopping-{storage_key}.html"
     with open(out_path, "w") as f:
         f.write(html)
 
-    return out_path
+    return str(out_path)
 
 
 if __name__ == "__main__":
@@ -94,7 +93,7 @@ if __name__ == "__main__":
 
     out = generate(args.title, items, args.storage_key)
     if args.out:
-        os.rename(out, args.out)
+        Path(out).rename(args.out)
         out = args.out
 
     print(f"Generated: {out}")

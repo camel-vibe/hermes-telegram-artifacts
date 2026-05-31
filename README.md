@@ -15,6 +15,8 @@ Inspired by Claude's artifact panel — that inline sandbox where you can build,
 3. **Gallery page** — browse, open, and delete previous artifacts without digging through chat history (`/artifacts/all`)
 4. **localStorage persistence** — artifacts can store state (checked shopping lists, preferences, form data) that survives closing Telegram. Just note: localStorage is device-local, so a list checked off on your phone won't reflect on your desktop
 
+> Note: The artifact server (`artifact-server.py`) is stdlib-only. `send-artifact.py` requires `python-telegram-bot`, `python-dotenv`, and `requests`.
+
 ## Demo
 
 ![Demo](demo/flow.gif)
@@ -24,6 +26,7 @@ Inspired by Claude's artifact panel — that inline sandbox where you can build,
 - Python 3.10+
 - A Telegram bot with Mini Apps enabled (via @BotFather)
 - HTTPS endpoint for your artifact server (Telegram requires HTTPS for Mini Apps)
+- `python-telegram-bot`, `python-dotenv`, `requests` (for `send-artifact.py`)
 
 ## Quick Start
 
@@ -146,7 +149,7 @@ tailscale serve --bg 9877
 
 ### artifact-server.py
 
-Stateless HTTP server. Stores HTML in `~/.hermes/artifacts/`.
+Stateless HTTP server. Stores HTML in `~/.hermes/artifacts/`. **No pip dependencies** — stdlib only.
 
 ```bash
 python3 scripts/artifact-server.py [--port 9877] [--host 127.0.0.1]
@@ -156,7 +159,7 @@ python3 scripts/artifact-server.py [--port 9877] [--host 127.0.0.1]
 - `POST /artifact` — register new artifact (JSON: `{"title": "...", "html": "..."}`)
 - `GET /artifact/<id>` — serve artifact HTML
 - `GET /artifact/latest` — serve the most recent artifact
-- `GET /artifacts` — JSON list: `[{"id": "...", "title": "...", "age": "..."}, ...]`
+- `GET /artifacts` — JSON list: `{"artifacts": [{"id": "...", "title": "...", "age": "..."}, ...]}`
 - `GET /artifacts/all` — gallery page (HTML): latest expanded, rest collapsed, Open/Delete buttons
 - `GET /artifacts/latest-age` — age in seconds of the latest artifact
 - `DELETE /artifact/<id>` — delete an artifact
@@ -208,10 +211,11 @@ python3 scripts/register-artifact.py /tmp/page.html "Title"
 
 ### generate-artifact.py
 
-Generate a starter artifact from the template.
+Generate a starter artifact from structured JSON data.
 
 ```bash
-python3 scripts/generate-artifact.py "My Artifact" > /tmp/artifact.html
+python3 scripts/generate-artifact.py --list  # see supported types and schemas
+python3 scripts/generate-artifact.py --type dashboard --data data.json --out /tmp/artifact.html
 ```
 
 ## Templates
@@ -269,6 +273,10 @@ Returns the artifact HTML with `Content-Type: text/html`.
 ### GET /artifacts
 
 Returns JSON list of all artifacts with age info.
+
+```json
+{"artifacts": [{"id": "a1b2c3d4e5f6", "title": "My Page", "type": "html", "timestamp": "...", "age": "5m ago"}]}
+```
 
 ### GET /artifacts/all
 
