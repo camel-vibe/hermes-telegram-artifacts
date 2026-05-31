@@ -267,6 +267,50 @@ python3 register-artifact.py trip.html "Trip Itinerary"
 
 **Types:** itinerary, report, comparison, reference, timeline, checklist, dashboard
 
+### CSV viewer (dedicated template)
+
+```bash
+# From a CSV file:
+python3 ~/.hermes/skills/creative/artifact-builder/scripts/generate-csv-viewer.py \
+  --file data.csv --title "Employee data"
+
+# Inline CSV string:
+python3 generate-csv-viewer.py --csv "Name,Score\nAlice,95\nBob,87"
+
+# Pipe:
+cat data.csv | python3 generate-csv-viewer.py --stdin --title "Scores"
+
+# Then send:
+python3 ~/.hermes/skills/creative/artifact-builder/scripts/send-artifact.py \
+  /tmp/csv-viewer-employee-data.html "Employee data" <host> <chat_id> <thread_id>
+```
+
+**Features:** auto-detects numeric columns (right-aligned, comma-formatted), real-time search with highlight, click-to-sort columns, row/column stats bar. Works with any CSV — just pipe data in.
+
+**Template:** `templates/csv-viewer.html`. **Script:** `scripts/generate-csv-viewer.py`. Placeholders: `{{TITLE}}`, `{{CSV_DATA}}`.
+
+### Markdown viewer (dedicated template)
+
+```bash
+# From a markdown file:
+python3 ~/.hermes/skills/creative/artifact-builder/scripts/generate-markdown-viewer.py \
+  --file notes.md --title "Meeting notes"
+
+# Inline:
+python3 generate-markdown-viewer.py --md "# Title\nSome **bold** text" --title "Quick note"
+
+# Pipe:
+cat doc.md | python3 generate-markdown-viewer.py --stdin --title "Docs"
+
+# Then send:
+python3 ~/.hermes/skills/creative/artifact-builder/scripts/send-artifact.py \
+  /tmp/markdown-viewer-meeting-notes.html "Meeting notes" <host> <chat_id> <thread_id>
+```
+
+**Features:** renders headings, bold, italic, strikethrough, inline code, fenced code blocks, blockquotes, ordered/unordered lists, tables, links, horizontal rules. No external deps — pure JS parser. Word/line count in meta bar.
+
+**Template:** `templates/markdown-viewer.html`. **Script:** `scripts/generate-markdown-viewer.py`. Placeholders: `{{TITLE}}`, `{{MARKDOWN_DATA}}`.
+
 ## Design Guidelines
 
 - **Flat** — no gradients, drop shadows, blur

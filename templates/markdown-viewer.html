@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root {
+  --bg: var(--tg-theme-bg-color, #f5f5f5);
+  --card: var(--tg-theme-section-bg-color, #ffffff);
+  --fg: var(--tg-theme-text-color, #1a1a1a);
+  --muted: var(--tg-theme-hint-color, #666);
+  --accent: var(--tg-theme-accent-text-color, #0ea5e9);
+  --border: var(--tg-theme-section-separator-color, #e0e0e0);
+  --green: #16a34a;
+  --red: #dc2626;
+  --code-bg: color-mix(in srgb, var(--fg) 5%, transparent);
+}
+* { box-sizing: border-box; margin: 0; padding: 0 }
+body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--fg); padding: 16px; font-size: 14px; line-height: 1.6 }
+
+.doc { background: var(--card); border: 0.5px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 10px }
+
+h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.3px; margin-bottom: 4px }
+h2 { font-size: 16px; font-weight: 600; margin: 20px 0 8px; letter-spacing: -0.2px; border-bottom: 0.5px solid var(--border); padding-bottom: 6px }
+h3 { font-size: 14px; font-weight: 600; margin: 16px 0 6px }
+
+p { margin-bottom: 10px }
+
+strong { font-weight: 600 }
+em { font-style: italic }
+del { text-decoration: line-through; color: var(--muted) }
+
+code {
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 12px;
+  background: var(--code-bg);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+pre {
+  background: var(--code-bg);
+  border: 0.5px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  margin: 10px 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+pre code { background: none; padding: 0; font-size: 12px; line-height: 1.5 }
+
+blockquote {
+  border-left: 3px solid var(--accent);
+  padding: 4px 12px;
+  margin: 10px 0;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+  border-radius: 0 8px 8px 0;
+}
+
+ul, ol { margin: 8px 0; padding-left: 24px }
+li { margin-bottom: 4px }
+
+hr { border: none; border-top: 0.5px solid var(--border); margin: 16px 0 }
+
+a { color: var(--accent); text-decoration: none }
+a:hover { text-decoration: underline }
+
+table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 13px }
+th, td { padding: 8px 10px; text-align: left; border: 0.5px solid var(--border) }
+th { background: var(--code-bg); font-weight: 600; font-size: 12px }
+tr:nth-child(even) td { background: color-mix(in srgb, var(--fg) 2%, transparent) }
+
+.meta { font-size: 12px; color: var(--muted); margin-bottom: 12px }
+</style>
+</head>
+<body>
+
+<div class="doc" id="doc">
+  <div class="meta" id="meta"></div>
+  <div id="content"></div>
+</div>
+
+<script>
+const RAW = `{{MARKDOWN_DATA}}`;
+
+// Minimal markdown → HTML (no deps)
+function md(text) {
+  const lines = text.split('\n');
+  let html = '', inCode = false, codeBuf = '', inList = false, listType = '';
+
+  function closeList() { if (inList) { html += '</' + listType + '>'; inList = false; } }
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Fenced code blocks
+    if (line.trim().startsWith('```')) {
+      if (inCode) { html += '</code></pre>'; inCode = false; }
+      else { closeList(); html += '<pre><code>'; inCode = true; }
+      continue;
+    }
+    if (inCode) { html += line.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '\n'; continue; }
+
+    // Blank line
+    if (!line.trim()) { closeList(); continue; }
+
+    // Headings
+    const hMatch = line.match(/^(#{1,6})\s+(.*)/);
+    if (hMatch) { closeList(); const level = hMatch[1].length; html += '<h' + level + '>' + inline(hMatch[2]) + '</h' + level + '>'; continue; }
+
+    // HR
+    if (/^(\*{3,}|-{3,}|_{3,})\s*$/.test(line.trim())) { closeList(); html += '<hr>'; continue; }
+
+    // Blockquote
+    if (line.startsWith('> ')) { closeList(); html += '<blockquote>' + inline(line.slice(2)) + '</blockquote>'; continue; }
+
+    // Unordered list
+    const ulMatch = line.match(/^(\s*)[*\-+]\s+(.*)/);
+    if (ulMatch) {
+      if (!inList || listType !== 'ul') { closeList(); html += '<ul>'; inList = true; listType = 'ul'; }
+      html += '<li>' + inline(ulMatch[2]) + '</li>';
+      continue;
+    }
+
+    // Ordered list
+    const olMatch = line.match(/^(\s*)\d+\.\s+(.*)/);
+    if (olMatch) {
+      if (!inList || listType !== 'ol') { closeList(); html += '<ol>'; inList = true; listType = 'ol'; }
+      html += '<li>' + inline(olMatch[2]) + '</li>';
+      continue;
+    }
+
+    // Table (detect | pipes)
+    if (line.includes('|') && i + 1 < lines.length && /\|[\s-:]+\|/.test(lines[i + 1])) {
+      closeList();
+      const parseRow = r => r.split('|').map(c => c.trim()).filter(c => c);
+      const headers = parseRow(line);
+      html += '<table><thead><tr>' + headers.map(h => '<th>' + inline(h) + '</th>').join('') + '</tr></thead><tbody>';
+      i += 2; // skip header + separator
+      while (i < lines.length && lines[i].includes('|')) {
+        const cells = parseRow(lines[i]);
+        html += '<tr>' + cells.map(c => '<td>' + inline(c) + '</td>').join('') + '</tr>';
+        i++;
+      }
+      html += '</tbody></table>';
+      i--; // loop increments
+      continue;
+    }
+
+    // Paragraph
+    closeList();
+    html += '<p>' + inline(line) + '</p>';
+  }
+  closeList();
+  if (inCode) html += '</code></pre>';
+  return html;
+}
+
+function inline(text) {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/~~(.+?)~~/g, '<del>$1</del>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+}
+
+// Render
+const content = document.getElementById('content');
+content.innerHTML = md(RAW);
+
+// Meta: line count
+const lineCount = RAW.split('\n').length;
+const wordCount = RAW.split(/\s+/).filter(w => w).length;
+document.getElementById('meta').textContent = wordCount + ' words · ' + lineCount + ' lines';
+
+// TG theme sync
+const tg = (window.Telegram && window.Telegram.WebApp) ? window.Telegram.WebApp : null;
+if (tg) {
+  try {
+    tg.ready();
+    tg.setHeaderColor(tg.themeParams?.bg_color || '#f5f5f5');
+    tg.setBackgroundColor(tg.themeParams?.bg_color || '#f5f5f5');
+    tg.onEvent('themeChanged', function() {
+      var p = tg.themeParams;
+      if (p) { tg.setHeaderColor(p.bg_color); tg.setBackgroundColor(p.bg_color); }
+    });
+  } catch(e) { console.error('[TG]', e); }
+}
+</script>
+</body>
+</html>
