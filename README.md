@@ -31,14 +31,38 @@ Inspired by Claude's artifact panel — that inline sandbox where you can build,
 ## Quick Start
 
 ```bash
-# 1. Start the artifact server
+# 1. Clone and install
+pip install python-telegram-bot python-dotenv requests
+
+# 2. Set up config
+mkdir -p ~/.hermes
+cat > ~/.hermes/.env << 'EOF'
+TELEGRAM_BOT_TOKEN=123456:ABC-DEF...
+HERMES_DASHBOARD_HOST=your-domain.com
+HERMES_ARTIFACT_CHAT=YOUR_CHAT_ID
+EOF
+
+# 3. Start the artifact server
 python3 scripts/artifact-server.py &
 
-# 2. Register and send an artifact
-python3 scripts/send-artifact.py /tmp/my-page.html "Open Dashboard" your-domain.com <chat_id> <thread_id>
+# 4. Send a test artifact
+echo '<h1>Hello from Artifacts!</h1>' > /tmp/test.html
+python3 scripts/send-artifact.py /tmp/test.html "Open Test" your-domain.com
 ```
 
 That's it. The user sees a button in chat that opens the artifact as a Telegram Mini App.
+
+### Finding your chat_id
+
+Send any message to your bot in Telegram, then:
+
+```bash
+curl -s "https://api.telegram.org/botYOUR_BOT_TOKEN/getUpdates" | python3 -m json.tool
+```
+
+Look for `"chat": {"id": 123456789}` — that's your `chat_id`.
+
+For group chats, the ID is negative (e.g., `-1001234567890`).
 
 ## Architecture
 
@@ -72,20 +96,31 @@ pip install python-telegram-bot python-dotenv requests
 ### 3. Set up your Telegram bot
 
 1. Talk to **@BotFather** on Telegram
-2. Create a new bot or use your existing Hermes bot
-3. Run `/newapp` → set the Mini App URL to your public HTTPS endpoint
+2. Create a new bot with `/newbot` (or use an existing one)
+3. Enable Mini Apps: send `/newapp` to BotFather, select your bot, and set the Mini App URL to your public HTTPS endpoint (e.g., `https://your-domain.com`)
 4. Optionally add a description and demo screenshots via BotFather
 
-> **Important:** Telegram requires HTTPS for Mini Apps. If your server is only on HTTP, you need a reverse proxy (nginx, caddy, Tailscale Serve, etc.)
+> **Important:** Telegram requires HTTPS for Mini Apps. If your server is only on HTTP, you need a reverse proxy (nginx, caddy, Tailscale Serve, etc.). See [HTTPS setup](#6-set-up-https-required-for-mini-apps) below.
 
 ### 4. Configure environment
 
-Your bot token should be in `~/.hermes/.env`:
+Create `~/.hermes/.env` with your bot token and default settings:
 
 ```bash
+mkdir -p ~/.hermes
+cat > ~/.hermes/.env << 'EOF'
 TELEGRAM_BOT_TOKEN=123456:ABC-DEF...
 HERMES_DASHBOARD_HOST=your-domain.com
+HERMES_ARTIFACT_CHAT=123456789
+EOF
 ```
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `TELEGRAM_BOT_TOKEN` | yes | Your bot token from @BotFather |
+| `HERMES_DASHBOARD_HOST` | yes | Public hostname (e.g., `your-domain.com` or `your-machine.tail-net.ts.net`) |
+| `HERMES_ARTIFACT_CHAT` | no | Default chat ID (avoids passing as arg every time) |
+| `HERMES_ARTIFACT_THREAD` | no | Default thread/topic ID for group topics |
 
 The scripts auto-load this file via `python-dotenv`.
 
