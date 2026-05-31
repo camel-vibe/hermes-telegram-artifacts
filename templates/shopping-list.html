@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root {
+  --bg: var(--tg-theme-bg-color, #f5f5f5);
+  --card: var(--tg-theme-section-bg-color, #ffffff);
+  --fg: var(--tg-theme-text-color, #1a1a1a);
+  --muted: var(--tg-theme-hint-color, #666);
+  --accent: var(--tg-theme-accent-text-color, #0ea5e9);
+  --border: var(--tg-theme-section-separator-color, #e0e0e0);
+  --green: #16a34a;
+  --red: #dc2626;
+}
+* { box-sizing: border-box; margin: 0; padding: 0 }
+body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--fg); padding: 16px; padding-bottom: 80px }
+.header { font-size: 20px; font-weight: 600; margin-bottom: 16px }
+.progress-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px }
+.progress-track { flex: 1; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden }
+.progress-fill { height: 100%; background: var(--green); border-radius: 3px; transition: width 0.3s }
+.progress-text { font-size: 13px; color: var(--muted); min-width: 50px; text-align: right }
+.item {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--card); border: 0.5px solid var(--border); border-radius: 12px;
+  padding: 14px; margin-bottom: 8px; cursor: pointer; user-select: none;
+  transition: opacity 0.2s;
+}
+.item.checked { opacity: 0.45 }
+.item.checked .item-name { text-decoration: line-through }
+.checkbox {
+  width: 24px; height: 24px; border-radius: 6px; flex-shrink: 0;
+  border: 2px solid var(--border); display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s;
+}
+.item.checked .checkbox { background: var(--green); border-color: var(--green) }
+.checkmark { color: white; font-size: 14px; opacity: 0; transition: opacity 0.2s }
+.item.checked .checkmark { opacity: 1 }
+.item-name { font-size: 15px; flex: 1; min-width: 0 }
+.note { font-size: 12px; color: var(--accent); margin-left: 4px }
+.qty-controls {
+  display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+}
+.qty-btn {
+  width: 28px; height: 28px; border-radius: 8px; border: 0.5px solid var(--border);
+  background: var(--bg); color: var(--fg); font-size: 16px; font-weight: 500;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.qty-btn:active { opacity: 0.6 }
+.qty-val {
+  font-size: 15px; font-weight: 500; min-width: 20px; text-align: center;
+}
+.qty-val.hidden { display: none }
+.delete-btn {
+  width: 28px; height: 28px; border-radius: 8px; border: none;
+  background: var(--red); color: white; font-size: 14px; font-weight: 500;
+  display: none; align-items: center; justify-content: center;
+  cursor: pointer; flex-shrink: 0; -webkit-tap-highlight-color: transparent;
+}
+.item.long-pressed .delete-btn { display: flex; }
+.item.long-pressed { border-color: var(--red); }
+
+.overlay {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+  z-index: 100; align-items: center; justify-content: center;
+}
+.overlay.show { display: flex }
+.dialog {
+  background: var(--card); border-radius: 14px; padding: 24px;
+  width: 280px; text-align: center;
+}
+.dialog-title { font-size: 16px; font-weight: 600; margin-bottom: 6px }
+.dialog-item { font-size: 14px; color: var(--muted); margin-bottom: 20px }
+.dialog-btns { display: flex; gap: 10px; justify-content: center; }
+.dialog-btn {
+  padding: 10px 20px; border-radius: 10px; border: none;
+  font-size: 15px; font-weight: 500; cursor: pointer;
+}
+.dialog-cancel { background: var(--bg); color: var(--fg) }
+.dialog-delete { background: var(--red); color: white }
+
+.add-bar {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  background: var(--card); border-top: 0.5px solid var(--border);
+  padding: 12px 16px; display: flex; gap: 8px;
+}
+.add-input {
+  flex: 1; padding: 10px 14px; border-radius: 10px;
+  border: 0.5px solid var(--border); background: var(--bg); color: var(--fg);
+  font-size: 15px; outline: none;
+}
+.add-input::placeholder { color: var(--muted) }
+.add-btn {
+  padding: 10px 18px; border-radius: 10px; border: none;
+  background: var(--accent); color: white; font-size: 15px; font-weight: 500;
+  cursor: pointer;
+}
+</style>
+</head>
+<body>
+
+<div class="header" id="title"></div>
+<div class="progress-bar">
+  <div class="progress-track"><div class="progress-fill" id="progress"></div></div>
+  <div class="progress-text" id="progress-text"></div>
+</div>
+<div id="list"></div>
+
+<div class="add-bar">
+  <input class="add-input" id="add-input" type="text" placeholder="Add item..." enterkeyhint="done">
+  <button class="add-btn" id="add-btn">Add</button>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="dialog">
+    <div class="dialog-title">Delete item?</div>
+    <div class="dialog-item" id="dialog-item-name"></div>
+    <div class="dialog-btns">
+      <button class="dialog-btn dialog-cancel" id="dialog-cancel">Cancel</button>
+      <button class="dialog-btn dialog-delete" id="dialog-confirm">Delete</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// CONFIG — edit these to customize the list
+// ============================================================
+const LIST_TITLE = '{{TITLE}}';
+const STORAGE_KEY = '{{STORAGE_KEY}}';
+const DEFAULT_ITEMS = [
+  // { name: 'Milk' },
+  // { name: 'Green long pepper', note: 'pointed pepper / 长青椒' },
+  {{DEFAULT_ITEMS_JS}}
+];
+// ============================================================
+
+function loadItems() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const saved = JSON.parse(raw);
+      if (saved.length > 0) return saved;
+    }
+  } catch(e) {}
+  return DEFAULT_ITEMS.map((item, i) => ({
+    id: item.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + i,
+    name: item.name,
+    note: item.note || '',
+    qty: 1,
+    checked: false
+  }));
+}
+
+function saveItems(items) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+}
+
+let items = loadItems();
+items.forEach(function(i) { if (i.qty === undefined) i.qty = 1; });
+
+// --- Long press + delete confirmation ---
+let longPressTimer = null;
+let pendingDeleteId = null;
+
+function render() {
+  var total = items.length;
+  var checked = items.filter(function(i) { return i.checked; }).length;
+  var pct = total ? Math.round((checked / total) * 100) : 0;
+
+  document.getElementById('progress').style.width = pct + '%';
+  document.getElementById('progress-text').textContent = checked + '/' + total;
+
+  var list = document.getElementById('list');
+  var sorted = items.slice().sort(function(a, b) { return a.checked - b.checked; });
+
+  list.innerHTML = sorted.map(function(item) {
+    return '<div class="item ' + (item.checked ? 'checked' : '') + '" data-id="' + item.id + '">'
+      + '<div class="checkbox"><span class="checkmark">✓</span></div>'
+      + '<span class="item-name">' + item.name + (item.note ? '<span class="note">' + item.note + '</span>' : '') + '</span>'
+      + '<div class="qty-controls">'
+      +   '<div class="qty-btn qty-minus" data-id="' + item.id + '">−</div>'
+      +   '<span class="qty-val ' + (item.qty <= 1 ? 'hidden' : '') + '">' + item.qty + '</span>'
+      +   '<div class="qty-btn qty-plus" data-id="' + item.id + '">+</div>'
+      + '</div>'
+      + '<div class="delete-btn" data-id="' + item.id + '">✕</div>'
+      + '</div>';
+  }).join('');
+
+  // Click to toggle check
+  list.querySelectorAll('.item').forEach(function(el) {
+    el.addEventListener('click', function(e) {
+      if (e.target.closest('.qty-controls') || e.target.closest('.delete-btn')) return;
+      var id = el.getAttribute('data-id');
+      var item = items.find(function(i) { return i.id === id; });
+      if (item) { item.checked = !item.checked; saveItems(items); render(); }
+    });
+  });
+
+  // Long press on item → show delete button
+  list.querySelectorAll('.item').forEach(function(el) {
+    var timer = null;
+    function startPress() {
+      timer = setTimeout(function() {
+        el.classList.add('long-pressed');
+      }, 500);
+    }
+    function cancelPress() {
+      clearTimeout(timer);
+    }
+    el.addEventListener('touchstart', function(e) {
+      if (e.target.closest('.qty-controls') || e.target.closest('.delete-btn')) return;
+      startPress();
+    }, { passive: true });
+    el.addEventListener('touchend', cancelPress);
+    el.addEventListener('touchmove', cancelPress);
+    el.addEventListener('touchcancel', cancelPress);
+    // Desktop fallback
+    el.addEventListener('mousedown', function(e) {
+      if (e.target.closest('.qty-controls') || e.target.closest('.delete-btn')) return;
+      startPress();
+    });
+    el.addEventListener('mouseup', cancelPress);
+    el.addEventListener('mouseleave', cancelPress);
+  });
+
+  // Delete button → confirm dialog
+  list.querySelectorAll('.delete-btn').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var id = btn.getAttribute('data-id');
+      var item = items.find(function(i) { return i.id === id; });
+      if (item) showDeleteConfirm(id, item.name);
+    });
+  });
+
+  // Qty buttons
+  list.querySelectorAll('.qty-minus').forEach(function(el) {
+    el.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var id = el.getAttribute('data-id');
+      var item = items.find(function(i) { return i.id === id; });
+      if (item && item.qty > 1) { item.qty--; saveItems(items); render(); }
+    });
+  });
+  list.querySelectorAll('.qty-plus').forEach(function(el) {
+    el.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var id = el.getAttribute('data-id');
+      var item = items.find(function(i) { return i.id === id; });
+      if (item) { item.qty++; saveItems(items); render(); }
+    });
+  });
+}
+
+function showDeleteConfirm(id, name) {
+  pendingDeleteId = id;
+  document.getElementById('dialog-item-name').textContent = name;
+  document.getElementById('overlay').classList.add('show');
+}
+
+document.getElementById('dialog-cancel').addEventListener('click', function() {
+  document.getElementById('overlay').classList.remove('show');
+  pendingDeleteId = null;
+});
+
+document.getElementById('dialog-confirm').addEventListener('click', function() {
+  if (pendingDeleteId) {
+    items = items.filter(function(i) { return i.id !== pendingDeleteId; });
+    saveItems(items);
+    render();
+  }
+  document.getElementById('overlay').classList.remove('show');
+  pendingDeleteId = null;
+});
+
+document.getElementById('overlay').addEventListener('click', function(e) {
+  if (e.target === e.currentTarget) {
+    document.getElementById('overlay').classList.remove('show');
+    pendingDeleteId = null;
+  }
+});
+
+function addItem(name) {
+  var trimmed = name.trim();
+  if (!trimmed) return;
+  var id = trimmed.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now();
+  items.push({ id: id, name: trimmed, note: '', qty: 1, checked: false });
+  saveItems(items);
+  render();
+}
+
+document.getElementById('add-btn').addEventListener('click', function() {
+  var input = document.getElementById('add-input');
+  addItem(input.value);
+  input.value = '';
+});
+
+document.getElementById('add-input').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') {
+    addItem(e.target.value);
+    e.target.value = '';
+  }
+});
+
+document.getElementById('title').textContent = LIST_TITLE;
+render();
+
+var tg = (window.Telegram && window.Telegram.WebApp) ? window.Telegram.WebApp : null;
+if (tg) {
+  try {
+    tg.ready();
+    tg.setHeaderColor(tg.themeParams?.bg_color || '#f5f5f5');
+    tg.setBackgroundColor(tg.themeParams?.bg_color || '#f5f5f5');
+    tg.onEvent('themeChanged', function() {
+      var p = tg.themeParams;
+      if (p) { tg.setHeaderColor(p.bg_color); tg.setBackgroundColor(p.bg_color); }
+    });
+  } catch(e) { console.error('[TG]', e); }
+}
+</script>
+</body>
+</html>

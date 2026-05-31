@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root {
+  --bg: var(--tg-theme-bg-color, #f5f5f4);
+  --card: var(--tg-theme-section-bg-color, #ffffff);
+  --fg: var(--tg-theme-text-color, rgba(0,0,0,0.88));
+  --muted: var(--tg-theme-hint-color, #615d59);
+  --accent: var(--tg-theme-accent-text-color, #0ea5e9);
+  --border: var(--tg-theme-section-separator-color, rgba(0,0,0,0.08));
+  --green: #16a34a;
+  --red: #dc2626;
+  --orange: #d97706;
+}
+* { box-sizing: border-box; margin: 0; padding: 0 }
+body {
+  font-family: -apple-system, system-ui, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg); color: var(--fg);
+  padding: 20px 16px; padding-bottom: 32px;
+  -webkit-font-smoothing: antialiased;
+}
+.title {
+  font-size: 26px; font-weight: 700;
+  letter-spacing: -0.5px; line-height: 1.2;
+  margin-bottom: 2px;
+}
+.meta { display: flex; gap: 14px; margin: 8px 0 20px; flex-wrap: wrap }
+.meta-item { font-size: 13px; color: var(--muted); font-weight: 500; display: flex; align-items: center; gap: 5px }
+.meta-sep { width: 3px; height: 3px; border-radius: 50%; background: var(--muted); opacity: 0.4; align-self: center }
+
+/* Scaler */
+.scaler { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; padding: 0 }
+.scaler-label { font-size: 13px; color: var(--muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; flex-shrink: 0 }
+.scaler-btns { display: flex; gap: 0; flex: 1; justify-content: flex-end }
+.scale-btn {
+  padding: 7px 16px; font-size: 14px; font-weight: 500;
+  border: 0.5px solid var(--border); background: var(--card);
+  color: var(--muted); cursor: pointer; transition: all 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.scale-btn:first-child { border-radius: 8px 0 0 8px }
+.scale-btn:last-child { border-radius: 0 8px 8px 0 }
+.scale-btn + .scale-btn { border-left: none }
+.scale-btn.active { background: var(--accent); color: white; border-color: var(--accent); z-index: 1; position: relative }
+.scale-btn.active + .scale-btn { border-left-color: var(--accent) }
+.servings-display { font-size: 15px; font-weight: 600; min-width: 72px; text-align: right; font-variant-numeric: tabular-nums; letter-spacing: -0.2px }
+
+/* Section */
+.section { margin-bottom: 24px }
+.section-title {
+  font-size: 12px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.8px; color: var(--accent); margin-bottom: 10px;
+  padding-bottom: 6px; border-bottom: 1.5px solid var(--accent); opacity: 0.8;
+}
+
+/* Ingredient row */
+.ing {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 0; margin-bottom: 0;
+  user-select: none; transition: opacity 0.2s;
+  border-bottom: 0.5px solid var(--border);
+}
+.ing:last-child { border-bottom: none }
+.ing.checked { opacity: 0.4 }
+.ing.checked .ing-name { text-decoration: line-through; text-decoration-color: var(--muted) }
+.ing-check {
+  width: 20px; height: 20px; border-radius: 6px; flex-shrink: 0;
+  border: 1.5px solid var(--border); display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s;
+}
+.ing.checked .ing-check { background: var(--green); border-color: var(--green) }
+.ing-check-mark { color: white; font-size: 11px; opacity: 0; transition: opacity 0.2s }
+.ing.checked .ing-check-mark { opacity: 1 }
+.ing-name { font-size: 14px; flex: 1; font-weight: 400; line-height: 1.4 }
+.ing-right {
+  display: flex; align-items: baseline; gap: 4px; flex-shrink: 0;
+  margin-left: auto; cursor: pointer; padding: 4px 6px; margin: -4px -6px;
+  border-radius: 6px; transition: background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  position: relative;
+}
+.ing-right:active { background: color-mix(in srgb, var(--accent) 10%, transparent) }
+.ing-amount {
+  font-size: 14px; font-weight: 600; text-align: right;
+  font-variant-numeric: tabular-nums; letter-spacing: -0.2px;
+  color: var(--fg);
+}
+.ing-unit { font-size: 13px; font-weight: 400; color: var(--muted) }
+.ing-note {
+  display: block; font-size: 12px; color: var(--muted);
+  margin-top: 2px; font-style: normal; font-weight: 400; letter-spacing: 0;
+}
+
+/* Conversion tooltip */
+.conv-tip {
+  position: absolute; top: -32px; right: 0;
+  background: var(--fg); color: var(--bg);
+  font-size: 12px; font-weight: 500; white-space: nowrap;
+  padding: 4px 10px; border-radius: 6px;
+  pointer-events: none; opacity: 0;
+  transition: opacity 0.2s; z-index: 10;
+}
+.conv-tip::after {
+  content: ''; position: absolute; bottom: -4px; right: 14px;
+  border-left: 4px solid transparent; border-right: 4px solid transparent;
+  border-top: 4px solid var(--fg);
+}
+.ing-right.show-conv .conv-tip { opacity: 1 }
+
+/* Step row */
+.step {
+  display: flex; gap: 12px; padding: 14px 0; margin-bottom: 0;
+  transition: opacity 0.2s; border-bottom: 0.5px solid var(--border);
+}
+.step:last-child { border-bottom: none }
+.step.checked { opacity: 0.4 }
+.step.checked .step-text { text-decoration: line-through; text-decoration-color: var(--muted) }
+.step-num {
+  width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700; color: var(--accent);
+  transition: all 0.25s; margin-top: 1px;
+}
+.step.checked .step-num { background: var(--green); color: white }
+.step-body { flex: 1; min-width: 0 }
+.step-text { font-size: 14px; line-height: 1.5; letter-spacing: -0.1px }
+
+/* Timer */
+.timer-btn {
+  display: inline-flex; align-items: center; gap: 5px; margin-top: 10px;
+  padding: 6px 14px; border-radius: 99px;
+  background: color-mix(in srgb, var(--muted) 8%, transparent);
+  color: var(--fg); font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: all 0.2s;
+  -webkit-tap-highlight-color: transparent; letter-spacing: -0.1px;
+}
+.timer-btn:active { transform: scale(0.97) }
+.timer-btn.running { background: var(--orange); color: white; animation: pulse 1.5s ease-in-out infinite }
+.timer-btn.done { background: var(--green); color: white }
+@keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.75} }
+.timer-icon { font-size: 14px }
+
+/* Conversion reference */
+.conv-ref {
+  margin-top: 24px; border-radius: 12px; overflow: hidden;
+  background: color-mix(in srgb, var(--muted) 6%, var(--card));
+}
+.conv-ref-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.conv-ref-title {
+  font-size: 12px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.8px; color: var(--muted);
+}
+.conv-ref-arrow {
+  font-size: 12px; color: var(--muted); transition: transform 0.2s;
+}
+.conv-ref.open .conv-ref-arrow { transform: rotate(180deg) }
+.conv-ref-body {
+  max-height: 0; overflow: hidden; transition: max-height 0.3s ease;
+}
+.conv-ref.open .conv-ref-body { max-height: 600px }
+.conv-ref-content { padding: 0 16px 14px }
+.conv-group { margin-bottom: 12px }
+.conv-group:last-child { margin-bottom: 0 }
+.conv-group-title {
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.6px; color: var(--accent); margin-bottom: 6px;
+}
+.conv-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 5px 0; font-size: 13px;
+  border-bottom: 0.5px solid var(--border);
+}
+.conv-row:last-child { border-bottom: none }
+.conv-from { color: var(--fg); font-weight: 500 }
+.conv-to { color: var(--muted); font-variant-numeric: tabular-nums }
+
+/* Notes */
+.notes {
+  background: color-mix(in srgb, var(--muted) 6%, var(--card));
+  border-radius: 12px; padding: 14px 16px; margin-top: 24px;
+}
+.notes-title {
+  font-size: 12px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.8px; color: var(--muted); margin-bottom: 8px;
+}
+.notes-text { font-size: 13px; color: var(--muted); line-height: 1.6 }
+.notes-text li { margin-bottom: 5px; padding-left: 4px }
+.notes-text li:last-child { margin-bottom: 0 }
+</style>
+</head>
+<body>
+
+<div class="title" id="title"></div>
+<div class="meta" id="meta"></div>
+
+<div class="scaler" id="scaler">
+  <div class="scaler-label">Servings</div>
+  <div class="servings-display" id="servings-display"></div>
+  <div class="scaler-btns" id="scaler-btns"></div>
+</div>
+
+<div id="content"></div>
+
+<script>
+// ============================================================
+// RECIPE DATA — edit this to customize
+// ============================================================
+var RECIPE = {
+  title: '{{TITLE}}',
+  baseServings: {{SERVINGS}},
+  prepTime: '{{PREP_TIME}}',
+  cookTime: '{{COOK_TIME}}',
+  totalTime: '{{TOTAL_TIME}}',
+  difficulty: '{{DIFFICULTY}}',
+  sections: [
+    {{SECTIONS_JSON}}
+  ],
+  steps: [
+    {{STEPS_JSON}}
+  ],
+  notes: [{{NOTES_JSON}}]
+};
+// ============================================================
+
+var STORAGE_KEY = '{{STORAGE_KEY}}';
+var scale = 1;
+var checkedIngs = {};
+var checkedSteps = {};
+var timers = {};
+
+// --- Conversion engine ---
+var CONV_TABLE = {
+  // Volume → ml
+  'tsp': 4.929, 'teaspoon': 4.929, 'teaspoons': 4.929,
+  'tbsp': 14.787, 'tablespoon': 14.787, 'tablespoons': 14.787,
+  'fl oz': 29.574, 'floz': 29.574,
+  'cup': 236.588, 'cups': 236.588,
+  'ml': 1, 'milliliter': 1, 'milliliters': 1,
+  'l': 1000, 'liter': 1000, 'liters': 1000,
+  // Weight → g
+  'oz': 28.3495, 'ounce': 28.3495, 'ounces': 28.3495,
+  'g': 1, 'gram': 1, 'grams': 1,
+  'kg': 1000, 'kilogram': 1000, 'kilograms': 1000,
+  'lb': 453.592, 'lbs': 453.592, 'pound': 453.592, 'pounds': 453.592,
+};
+var VOL_UNITS = ['tsp','teaspoon','teaspoons','tbsp','tablespoon','tablespoons','fl oz','floz','cup','cups','ml','milliliter','milliliters','l','liter','liters'];
+var WT_UNITS = ['oz','ounce','ounces','g','gram','grams','kg','kilogram','kilograms','lb','lbs','pound','pounds'];
+
+// Best opposite for each unit
+var BEST_CONV = {
+  'tsp': { unit: 'ml', factor: CONV_TABLE['tsp'] },
+  'teaspoon': { unit: 'ml', factor: CONV_TABLE['tsp'] },
+  'teaspoons': { unit: 'ml', factor: CONV_TABLE['tsp'] },
+  'tbsp': { unit: 'ml', factor: CONV_TABLE['tbsp'] },
+  'tablespoon': { unit: 'ml', factor: CONV_TABLE['tbsp'] },
+  'tablespoons': { unit: 'ml', factor: CONV_TABLE['tbsp'] },
+  'cup': { unit: 'ml', factor: CONV_TABLE['cup'] },
+  'cups': { unit: 'ml', factor: CONV_TABLE['cup'] },
+  'fl oz': { unit: 'ml', factor: CONV_TABLE['fl oz'] },
+  'ml': { unit: 'tbsp', factor: 1 / CONV_TABLE['tbsp'] },
+  'l': { unit: 'cups', factor: 1000 / CONV_TABLE['cup'] },
+  'g': { unit: 'oz', factor: 1 / CONV_TABLE['oz'] },
+  'kg': { unit: 'lb', factor: 1 / CONV_TABLE['lb'] },
+  'oz': { unit: 'g', factor: CONV_TABLE['oz'] },
+  'lb': { unit: 'kg', factor: 1 / CONV_TABLE['lb'] },
+  'lbs': { unit: 'kg', factor: 1 / CONV_TABLE['lb'] },
+};
+
+// Temperature
+function convertTemp(val, fromUnit) {
+  if (fromUnit === '°F' || fromUnit === 'F') {
+    return { value: Math.round((val - 32) * 5 / 9), unit: '°C' };
+  }
+  if (fromUnit === '°C' || fromUnit === 'C') {
+    return { value: Math.round(val * 9 / 5 + 32), unit: '°F' };
+  }
+  return null;
+}
+
+function convertAmount(val, unit) {
+  var u = unit.toLowerCase().trim();
+  // Temperature
+  if (u === '°f' || u === 'f' || u === '°c' || u === 'c') {
+    return convertTemp(val, unit);
+  }
+  // Best conversion
+  var key = unit.toLowerCase().trim();
+  if (BEST_CONV[key]) {
+    var c = BEST_CONV[key];
+    var result = val * c.factor;
+    return { value: roundAmount(result), unit: c.unit };
+  }
+  return null;
+}
+
+function loadState() {
+  try {
+    var raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      var s = JSON.parse(raw);
+      scale = s.scale || 1;
+      checkedIngs = s.checkedIngs || {};
+      checkedSteps = s.checkedSteps || {};
+      timers = s.timers || {};
+    }
+  } catch(e) {}
+}
+
+function saveState() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({
+    scale: scale, checkedIngs: checkedIngs,
+    checkedSteps: checkedSteps, timers: timers
+  }));
+}
+
+function roundAmount(val) {
+  if (val === 0) return '0';
+  if (val >= 100) return Math.round(val).toString();
+  if (val >= 10) return (Math.round(val * 10) / 10).toString();
+  var fracs = [[0.25, '¼'], [0.33, '⅓'], [0.5, '½'], [0.67, '⅔'], [0.75, '¾']];
+  var whole = Math.floor(val);
+  var frac = val - whole;
+  for (var i = 0; i < fracs.length; i++) {
+    if (Math.abs(frac - fracs[i][0]) < 0.08) {
+      return whole > 0 ? whole + fracs[i][1] : fracs[i][1];
+    }
+  }
+  return (Math.round(val * 100) / 100).toString();
+}
+
+function formatTime(sec) {
+  var m = Math.floor(sec / 60);
+  var s = sec % 60;
+  return m + ':' + (s < 10 ? '0' : '') + s;
+}
+
+// --- Conversion reference data ---
+var CONV_REF = [
+  { title: 'Volume', rows: [
+    ['1 tsp', '5 ml'], ['1 tbsp', '15 ml'], ['1 fl oz', '30 ml'],
+    ['1 cup', '240 ml'], ['¼ cup', '60 ml'], ['⅓ cup', '80 ml'],
+    ['½ cup', '120 ml'], ['1 liter', '4.2 cups'],
+  ]},
+  { title: 'Weight', rows: [
+    ['1 oz', '28 g'], ['4 oz', '113 g'], ['8 oz', '225 g'],
+    ['1 lb', '454 g'], ['1 kg', '2.2 lb'],
+  ]},
+  { title: 'Temperature', rows: [
+    ['300°F', '150°C'], ['325°F', '165°C'], ['350°F', '175°C'],
+    ['375°F', '190°C'], ['400°F', '200°C'], ['425°F', '220°C'],
+    ['450°F', '230°C'],
+  ]},
+];
+
+function render() {
+  document.getElementById('title').textContent = RECIPE.title;
+
+  // Meta
+  var meta = document.getElementById('meta');
+  var metaParts = [];
+  if (RECIPE.prepTime) metaParts.push('Prep ' + RECIPE.prepTime);
+  if (RECIPE.cookTime) metaParts.push('Cook ' + RECIPE.cookTime);
+  if (RECIPE.totalTime) metaParts.push(RECIPE.totalTime);
+  if (RECIPE.difficulty) metaParts.push(RECIPE.difficulty);
+  meta.innerHTML = metaParts.map(function(p) {
+    return '<span class="meta-item">' + p + '</span>';
+  }).join('<span class="meta-sep"></span>');
+
+  // Scaler
+  var scaledServings = Math.round(RECIPE.baseServings * scale * 10) / 10;
+  document.getElementById('servings-display').textContent = scaledServings + ' servings';
+  var scales = [1, 1.5, 2, 3];
+  document.getElementById('scaler-btns').innerHTML = scales.map(function(s) {
+    return '<div class="scale-btn ' + (scale === s ? 'active' : '') + '" data-scale="' + s + '">'
+      + (s === 1 ? '1×' : s + '×') + '</div>';
+  }).join('');
+  document.querySelectorAll('.scale-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      scale = parseFloat(btn.getAttribute('data-scale'));
+      saveState(); render();
+    });
+  });
+
+  var html = '';
+
+  // Ingredients
+  RECIPE.sections.forEach(function(section) {
+    html += '<div class="section"><div class="section-title">' + section.name + '</div>';
+    section.items.forEach(function(item, i) {
+      var key = section.name + '_' + i;
+      var checked = checkedIngs[key] ? 'checked' : '';
+      var scaledAmt = item.amount ? roundAmount(item.amount * scale) : '';
+      var unit = item.unit || '';
+      // Build conversion tooltip
+      var convHtml = '';
+      if (item.amount && unit) {
+        var conv = convertAmount(item.amount * scale, unit);
+        if (conv) {
+          convHtml = '<div class="conv-tip">' + roundAmount(item.amount * scale) + ' ' + unit + ' = ' + conv.value + ' ' + conv.unit + '</div>';
+        }
+      }
+      html += '<div class="ing ' + checked + '" data-key="' + key + '">'
+        + '<div class="ing-check"><span class="ing-check-mark">✓</span></div>'
+        + '<span class="ing-name">' + item.name
+        + (item.note ? '<span class="ing-note">' + item.note + '</span>' : '')
+        + '</span>'
+        + '<div class="ing-right" data-conv="' + encodeURIComponent(JSON.stringify({val: item.amount ? roundAmount(item.amount * scale) : '', unit: unit})) + '">'
+        + convHtml
+        + '<span class="ing-amount">' + scaledAmt + '</span>'
+        + '<span class="ing-unit">' + unit + '</span>'
+        + '</div>'
+        + '</div>';
+    });
+    html += '</div>';
+  });
+
+  // Steps
+  html += '<div class="section"><div class="section-title">Steps</div>';
+  RECIPE.steps.forEach(function(step, i) {
+    var key = 'step_' + i;
+    var checked = checkedSteps[key] ? 'checked' : '';
+    var timerKey = 'timer_' + i;
+    var timerHtml = '';
+    if (step.timer) {
+      var t = timers[timerKey] || {};
+      var remaining = t.remaining != null ? t.remaining : step.timer;
+      var state = t.state || 'idle';
+      var label = state === 'done' ? 'Done!' : (state === 'running' ? formatTime(remaining) : formatTime(step.timer));
+      var cls = state === 'running' ? 'running' : (state === 'done' ? 'done' : '');
+      timerHtml = '<div class="timer-btn ' + cls + '" data-timer="' + timerKey + '" data-duration="' + step.timer + '">'
+        + '<span class="timer-icon">⏱</span> ' + label + '</div>';
+    }
+    html += '<div class="step ' + checked + '" data-key="' + key + '">'
+      + '<div class="step-num">' + (i + 1) + '</div>'
+      + '<div class="step-body"><div class="step-text">' + step.text + '</div>' + timerHtml + '</div>'
+      + '</div>';
+  });
+  html += '</div>';
+
+  // Conversion reference
+  html += '<div class="conv-ref" id="conv-ref">';
+  html += '<div class="conv-ref-header" id="conv-ref-toggle">';
+  html += '<span class="conv-ref-title">Conversion reference</span>';
+  html += '<span class="conv-ref-arrow">▾</span>';
+  html += '</div>';
+  html += '<div class="conv-ref-body"><div class="conv-ref-content">';
+  CONV_REF.forEach(function(group) {
+    html += '<div class="conv-group"><div class="conv-group-title">' + group.title + '</div>';
+    group.rows.forEach(function(row) {
+      html += '<div class="conv-row"><span class="conv-from">' + row[0] + '</span><span class="conv-to">' + row[1] + '</span></div>';
+    });
+    html += '</div>';
+  });
+  html += '</div></div></div>';
+
+  // Notes
+  if (RECIPE.notes && RECIPE.notes.length) {
+    html += '<div class="notes"><div class="notes-title">Notes</div><div class="notes-text"><ul>';
+    RECIPE.notes.forEach(function(n) { html += '<li>' + n + '</li>'; });
+    html += '</ul></div></div>';
+  }
+
+  document.getElementById('content').innerHTML = html;
+
+  // Ingredient clicks (toggle check)
+  document.querySelectorAll('.ing').forEach(function(el) {
+    el.addEventListener('click', function(e) {
+      // Don't toggle check if tapping the conversion area
+      if (e.target.closest('.ing-right')) return;
+      var key = el.getAttribute('data-key');
+      checkedIngs[key] = !checkedIngs[key];
+      saveState(); render();
+    });
+  });
+
+  // Conversion tap — toggle tooltip
+  document.querySelectorAll('.ing-right').forEach(function(el) {
+    el.addEventListener('click', function(e) {
+      e.stopPropagation();
+      // Hide all other tooltips first
+      document.querySelectorAll('.ing-right.show-conv').forEach(function(other) {
+        if (other !== el) other.classList.remove('show-conv');
+      });
+      el.classList.toggle('show-conv');
+    });
+  });
+
+  // Step clicks
+  document.querySelectorAll('.step').forEach(function(el) {
+    el.addEventListener('click', function() {
+      var key = el.getAttribute('data-key');
+      checkedSteps[key] = !checkedSteps[key];
+      saveState(); render();
+    });
+  });
+
+  // Timer clicks
+  document.querySelectorAll('.timer-btn').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var key = btn.getAttribute('data-timer');
+      var duration = parseInt(btn.getAttribute('data-duration'));
+      var t = timers[key] || {};
+      if (t.state === 'running') {
+        t.state = 'idle'; clearInterval(t.interval);
+      } else if (t.state === 'done') {
+        t.state = 'idle'; t.remaining = duration;
+      } else {
+        t.state = 'running';
+        if (t.remaining == null) t.remaining = duration;
+        t.interval = setInterval(function() {
+          t.remaining--;
+          if (t.remaining <= 0) {
+            t.remaining = 0; t.state = 'done';
+            clearInterval(t.interval);
+            timers[key] = t; saveState(); render();
+            if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
+          } else {
+            timers[key] = t; saveState();
+            btn.querySelector('.timer-icon').nextSibling.textContent = ' ' + formatTime(t.remaining);
+          }
+        }, 1000);
+      }
+      timers[key] = t; saveState(); render();
+    });
+  });
+
+  // Conversion reference toggle
+  var refToggle = document.getElementById('conv-ref-toggle');
+  var refEl = document.getElementById('conv-ref');
+  if (refToggle) {
+    refToggle.addEventListener('click', function() {
+      refEl.classList.toggle('open');
+    });
+  }
+}
+
+loadState();
+render();
+
+var tg = (window.Telegram && window.Telegram.WebApp) ? window.Telegram.WebApp : null;
+if (tg) {
+  try {
+    tg.ready();
+    tg.setHeaderColor(tg.themeParams?.bg_color || '#f5f5f4');
+    tg.setBackgroundColor(tg.themeParams?.bg_color || '#f5f5f4');
+    tg.onEvent('themeChanged', function() {
+      var p = tg.themeParams;
+      if (p) { tg.setHeaderColor(p.bg_color); tg.setBackgroundColor(p.bg_color); }
+    });
+  } catch(e) { console.error('[TG]', e); }
+}
+</script>
+</body>
+</html>
