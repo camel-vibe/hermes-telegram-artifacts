@@ -1,0 +1,10 @@
+"""Pytest configuration — add scripts/ to Python path."""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+_scripts_dir = Path(__file__).parent.parent / "scripts"
+if str(_scripts_dir) not in sys.path:
+    sys.path.insert(0, str(_scripts_dir))
