@@ -100,10 +100,11 @@ def gen_itinerary(data):
             tag_color = ev.get("tag_color","blue")
             value_str = esc(ev.get("value",""))
 
-            label_parts = [f'{time_str}']
+            # Label shows time + the event title (previously the title was
+            # computed but dropped, so itinerary events rendered without names).
+            label_html = " ".join(b for b in (time_str, title_str) if b)
             if note_str:
-                label_parts.append(f'<span class="line-note">{esc(note_str)}</span>')
-            label_html = " ".join(label_parts)
+                label_html += f' <span class="line-note">{esc(note_str)}</span>'
 
             value_html = value_str
             if tag_text:
@@ -367,7 +368,7 @@ def main():
         p.error("--type is required (or use --list)")
 
     if args.data:
-        with open(args.data) as f:
+        with open(args.data, encoding="utf-8") as f:
             data = json.load(f)
     else:
         data = json.load(sys.stdin)
@@ -376,7 +377,7 @@ def main():
     html = HEAD + "\n" + body + "\n" + TAIL
 
     if args.out:
-        with open(args.out, "w") as f:
+        with open(args.out, "w", encoding="utf-8") as f:
             f.write(html)
         print(f"Written to {args.out}", file=sys.stderr)
     else:

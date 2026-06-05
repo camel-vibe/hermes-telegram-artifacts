@@ -5,7 +5,7 @@ Standalone HTTP server that registers, serves, lists, and deletes
 Hermes artifacts (interactive HTML widgets for Telegram Mini Apps).
 
 Usage:
-    python3 artifact-server.py [--port PORT] [--host HOST]
+    python3 artifact_server.py [--port PORT] [--host HOST]
 
 Defaults: host=127.0.0.1, port=9877
 
@@ -28,15 +28,15 @@ import argparse
 import json
 import logging
 import signal
-import sys
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from pathlib import Path
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
 from typing import Any
 
 # Shared index module (stdlib, same directory)
 from artifacts_index import (
     ARTIFACTS_DIR,
+    DEFAULT_MAX_SIZE,
+    ArtifactTooLargeError,
     delete_artifact,
     get_artifact,
     health_check,
@@ -55,6 +55,10 @@ logging.basicConfig(
     datefmt="%Y-%m-%dT%H:%M:%S",
 )
 log = logging.getLogger("artifact-server")
+
+# Hard ceiling on a request body. Generous over DEFAULT_MAX_SIZE to allow for
+# JSON wrapping/escaping; register_artifact enforces the real per-artifact limit.
+MAX_REQUEST_BYTES = DEFAULT_MAX_SIZE * 4
 
 # ---------------------------------------------------------------------------
 # TG lifecycle injection script
@@ -164,37 +168,81 @@ def _gallery_html() -> str:
 class ArtifactHandler(BaseHTTPRequestHandler):
     """HTTP request handler for artifact server."""
 
-    # Silence per-request logging from BaseHTTPRequestHandler
+    # HTTP/1.1 enables keep-alive; every bodied response sends Content-Length.
+    protocol_version = "HTTP/1.1"
+
+    # Silence per-request logging from BaseHTTPRequestHandler (route to DEBUG).
     def log_message(self, format: str, *args: Any) -> None:
-        log.debug("%s", args[0])
+        log.debug(format, *args)
+
+    @staticmethod
+    def _route(path: str) -> str:
+        """Strip any query string / fragment, returning just the path."""
+        return path.split("?", 1)[0].split("#", 1)[0]
+
+    def _write_body(
+        self,
+        status: int,
+        body: bytes,
+        content_type: str,
+        *,
+        cache: bool = True,
+    ) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Access-Control-Allow-Origin", "*")
+        if not cache:
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
 
     def _respond(self, status: int, data: dict[str, Any]) -> None:
-        body = json.dumps(data).encode()
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.end_headers()
-        self.wfile.write(body)
+        # JSON endpoints are dynamic (listings, health, ages); never cache them,
+        # so the gallery's fetch('/artifacts') doesn't show a stale list.
+        body = json.dumps(data).encode("utf-8")
+        self._write_body(status, body, "application/json", cache=False)
 
     def _error(self, status: int, message: str, code: str = "ERROR") -> None:
         self._respond(status, {"error": message, "code": code})
 
     def do_OPTIONS(self) -> None:
         self.send_response(204)
+        self.send_header("Content-Length", "0")
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
 
     def do_POST(self) -> None:
-        if self.path != "/artifact":
-            self._error(404, "not found", "NOT_FOUND")
-            return
-
         try:
-            length = int(self.headers.get("Content-Length", 0))
+            if self._route(self.path) != "/artifact":
+                self._error(404, "not found", "NOT_FOUND")
+                return
+
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+            except (TypeError, ValueError):
+                self._error(400, "invalid Content-Length", "BAD_REQUEST")
+                return
+            if length < 0:
+                self._error(400, "invalid Content-Length", "BAD_REQUEST")
+                return
+            if length > MAX_REQUEST_BYTES:
+                self._error(413, "request body too large", "PAYLOAD_TOO_LARGE")
+                return
+
             body = self.rfile.read(length)
-            data = json.loads(body)
+            try:
+                data = json.loads(body)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                self._error(400, "invalid JSON body", "INVALID_JSON")
+                return
+            if not isinstance(data, dict):
+                self._error(400, "JSON body must be an object", "INVALID_JSON")
+                return
+
             title = str(data.get("title", "Untitled"))
             html = str(data.get("html", ""))
             atype = str(data.get("type", "html"))
@@ -203,92 +251,96 @@ class ArtifactHandler(BaseHTTPRequestHandler):
                 self._error(400, "missing html content", "MISSING_HTML")
                 return
 
-            entry = register_artifact(title, html, atype)
+            try:
+                entry = register_artifact(title, html, atype)
+            except ArtifactTooLargeError as e:
+                self._error(413, str(e), "PAYLOAD_TOO_LARGE")
+                return
+
             log.info("Registered artifact %s: %s", entry["id"], title)
             self._respond(200, entry)
-        except json.JSONDecodeError:
-            self._error(400, "invalid JSON body", "INVALID_JSON")
-        except ValueError as e:
-            self._error(413, str(e), "PAYLOAD_TOO_LARGE")
-        except Exception as e:
-            log.exception("Failed to register artifact")
-            self._error(500, "internal server error", "INTERNAL_ERROR")
+        except BrokenPipeError:
+            log.warning("client disconnected during POST")
+        except Exception:
+            log.exception("Failed to handle POST")
+            self._safe_500()
+
+    def do_HEAD(self) -> None:
+        # Same routing as GET; _write_body suppresses the body for HEAD.
+        self.do_GET()
 
     def do_GET(self) -> None:
-        if self.path == "/health":
-            self._respond(200, health_check())
-            return
+        path = self._route(self.path)
+        try:
+            if path == "/health":
+                self._respond(200, health_check())
+                return
 
-        if self.path == "/artifacts":
-            self._respond(200, {"artifacts": list_artifacts()})
-            return
+            if path == "/artifacts":
+                self._respond(200, {"artifacts": list_artifacts()})
+                return
 
-        if self.path == "/artifacts/all":
-            html = _gallery_html()
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
-            self.end_headers()
-            self.wfile.write(html.encode())
-            return
+            if path == "/artifacts/all":
+                self._write_body(
+                    200, _gallery_html().encode("utf-8"),
+                    "text/html; charset=utf-8", cache=False,
+                )
+                return
 
-        if self.path == "/artifacts/latest-age":
-            self._respond(200, {"age": latest_age()})
-            return
+            if path == "/artifacts/latest-age":
+                self._respond(200, {"age": latest_age()})
+                return
 
-        if self.path.startswith("/artifact/"):
-            aid = self.path[len("/artifact/"):]
-            data, aid = get_artifact(aid)
-            if data:
-                script = _tg_lifecycle_script()
+            if path.startswith("/artifact/"):
+                aid = path[len("/artifact/"):]
+                data, _ = get_artifact(aid)
+                if data is None:
+                    self._error(404, "artifact not found", "NOT_FOUND")
+                    return
+                script = _tg_lifecycle_script().encode("utf-8")
                 if b"</body>" in data:
-                    data = data.replace(b"</body>", script.encode() + b"</body>", 1)
+                    data = data.replace(b"</body>", script + b"</body>", 1)
                 else:
-                    data += script.encode()
+                    data = data + script
+                self._write_body(200, data, "text/html; charset=utf-8", cache=False)
+                return
 
-                self.send_response(200)
-                self.send_header("Content-Type", "text/html; charset=utf-8")
-                self.send_header("Access-Control-Allow-Origin", "*")
-                self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
-                self.end_headers()
-                self.wfile.write(data)
-            else:
-                self._error(404, "artifact not found", "NOT_FOUND")
-            return
-
-        self._error(404, "not found", "NOT_FOUND")
+            self._error(404, "not found", "NOT_FOUND")
+        except BrokenPipeError:
+            log.warning("client disconnected during GET %s", path)
+        except Exception:
+            log.exception("Failed to handle GET %s", path)
+            self._safe_500()
 
     def do_DELETE(self) -> None:
-        if not self.path.startswith("/artifact/"):
-            self._error(404, "not found", "NOT_FOUND")
-            return
+        path = self._route(self.path)
+        try:
+            if not path.startswith("/artifact/"):
+                self._error(404, "not found", "NOT_FOUND")
+                return
 
-        aid = self.path[len("/artifact/"):]
-        # Route through the shared module which handles path validation
-        if not aid.isalnum():
-            self._error(400, "invalid artifact id", "INVALID_ID")
-            return
+            aid = path[len("/artifact/"):]
+            if not aid.isalnum():
+                self._error(400, "invalid artifact id", "INVALID_ID")
+                return
 
-        if delete_artifact(aid):
-            log.info("Deleted artifact %s", aid)
-            self._respond(200, {"deleted": aid})
-        else:
-            self._error(404, "artifact not found", "NOT_FOUND")
+            if delete_artifact(aid):
+                log.info("Deleted artifact %s", aid)
+                self._respond(200, {"deleted": aid})
+            else:
+                self._error(404, "artifact not found", "NOT_FOUND")
+        except BrokenPipeError:
+            log.warning("client disconnected during DELETE %s", path)
+        except Exception:
+            log.exception("Failed to handle DELETE %s", path)
+            self._safe_500()
 
-
-# ---------------------------------------------------------------------------
-# ThreadingHTTPServer with graceful shutdown
-# ---------------------------------------------------------------------------
-
-
-class ThreadingHTTPServer(HTTPServer):
-    """HTTPServer that handles each request in a separate thread."""
-
-    daemon_threads = True  # Don't block shutdown on active threads
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-        self._shutting_down = False
+    def _safe_500(self) -> None:
+        """Best-effort 500. Swallows errors if the response already started."""
+        try:
+            self._error(500, "internal server error", "INTERNAL_ERROR")
+        except Exception:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -304,13 +356,15 @@ def main() -> None:
 
     ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
+    # ThreadingHTTPServer (stdlib) handles each request in its own daemon thread,
+    # so concurrent requests (e.g. a gallery loading many iframes) don't serialize.
     server = ThreadingHTTPServer((args.host, args.port), ArtifactHandler)
 
     def shutdown_handler(signum: int, frame: Any) -> None:
         log.info("Received signal %s, shutting down gracefully...", signum)
-        server._shutting_down = True
-        shutdown_thread = Thread(target=server.shutdown)
-        shutdown_thread.start()
+        # shutdown() blocks until serve_forever() returns and must run off the
+        # main thread (serve_forever is running there).
+        Thread(target=server.shutdown, daemon=True).start()
 
     signal.signal(signal.SIGTERM, shutdown_handler)
     signal.signal(signal.SIGINT, shutdown_handler)

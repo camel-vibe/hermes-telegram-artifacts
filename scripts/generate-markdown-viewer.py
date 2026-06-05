@@ -11,6 +11,8 @@ import re
 import sys
 from pathlib import Path
 
+from artifact_escape import esc_html, js_template
+
 TEMPLATE = Path(__file__).parent.parent / "templates" / "markdown-viewer.html"
 
 
@@ -28,7 +30,7 @@ def main():
     args = p.parse_args()
 
     if args.file:
-        md_data = Path(args.file).read_text()
+        md_data = Path(args.file).read_text(encoding="utf-8")
     elif args.stdin:
         md_data = sys.stdin.read()
     elif args.md:
@@ -36,15 +38,12 @@ def main():
     else:
         p.error("Provide --file, --md, or --stdin")
 
-    # Escape for JS template literal
-    md_escaped = md_data.replace("\\", "\\\\").replace("`", "\\`").replace("${", "\\${")
-
-    html = TEMPLATE.read_text()
-    html = html.replace("{{TITLE}}", args.title)
-    html = html.replace("{{MARKDOWN_DATA}}", md_escaped)
+    html = TEMPLATE.read_text(encoding="utf-8")
+    html = html.replace("{{TITLE}}", esc_html(args.title))
+    html = html.replace("{{MARKDOWN_DATA}}", js_template(md_data))
 
     out_path = args.out or f"/tmp/markdown-viewer-{slugify(args.title)}.html"
-    Path(out_path).write_text(html)
+    Path(out_path).write_text(html, encoding="utf-8")
     print(out_path)
 
 

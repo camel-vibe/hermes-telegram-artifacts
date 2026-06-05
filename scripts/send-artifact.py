@@ -56,8 +56,17 @@ def _ensure_server(port: int = 9877) -> None:
         pass
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    server_py = os.path.join(script_dir, "artifact-server.py")
-    if not os.path.exists(server_py):
+    # The importable module is artifact_server.py; artifact-server.py is a thin
+    # CLI shim. Prefer whichever exists so auto-start works either way.
+    server_py = next(
+        (
+            os.path.join(script_dir, name)
+            for name in ("artifact_server.py", "artifact-server.py")
+            if os.path.exists(os.path.join(script_dir, name))
+        ),
+        None,
+    )
+    if not server_py:
         return  # can't start, let register() fail with a clear error
 
     proc = subprocess.Popen(
@@ -85,7 +94,7 @@ def _ensure_server(port: int = 9877) -> None:
 
     if proc.poll() is not None:
         raise RuntimeError(
-            f"artifact-server.py exited with code {proc.returncode}. "
+            f"artifact server exited with code {proc.returncode}. "
             f"stderr: {stderr.decode(errors='replace')[:500]}"
         )
 
@@ -97,7 +106,7 @@ def register(html: str, title: str, port: int = 9877) -> str:
     _ensure_server(port)
 
     resp = requests.post(
-        f"http://localhost:{port}/artifact",
+        f"http://127.0.0.1:{port}/artifact",
         json={"title": title, "html": html},
         timeout=10,
     )
@@ -129,7 +138,7 @@ async def _send_button(
         )]
     ])
 
-    label = title.replace("Open ", "")
+    label = title.removeprefix("Open ")
     kwargs: dict[str, object] = {
         "chat_id": chat_id,
         "text": f"{label} \u2014 tap below to open:",

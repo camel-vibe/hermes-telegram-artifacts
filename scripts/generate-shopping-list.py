@@ -24,6 +24,8 @@ import re
 import sys
 from pathlib import Path
 
+from artifact_escape import js_json, js_str
+
 TEMPLATE_DIR = Path(__file__).parent.parent / "templates"
 TEMPLATE_PATH = TEMPLATE_DIR / "shopping-list.html"
 
@@ -35,12 +37,12 @@ def build_items_js(items):
         obj = {"name": item["name"]}
         if "note" in item and item["note"]:
             obj["note"] = item["note"]
-        lines.append("  " + json.dumps(obj, ensure_ascii=False) + ",")
+        lines.append("  " + js_json(obj) + ",")
     return "\n" + "\n".join(lines) + "\n"
 
 
 def generate(title, items, storage_key=None):
-    with open(TEMPLATE_PATH, "r") as f:
+    with open(TEMPLATE_PATH, "r", encoding="utf-8") as f:
         template = f.read()
 
     if not storage_key:
@@ -48,12 +50,14 @@ def generate(title, items, storage_key=None):
 
     items_js = build_items_js(items)
 
-    html = template.replace("{{TITLE}}", title)
+    # Title is embedded in a single-quoted JS string; storage_key is already
+    # restricted to [a-z0-9_]; items are JSON-encoded for <script> safety.
+    html = template.replace("{{TITLE}}", js_str(title))
     html = html.replace("{{STORAGE_KEY}}", storage_key)
     html = html.replace("{{DEFAULT_ITEMS_JS}}", items_js)
 
     out_path = Path("/tmp") / f"shopping-{storage_key}.html"
-    with open(out_path, "w") as f:
+    with open(out_path, "w", encoding="utf-8") as f:
         f.write(html)
 
     return str(out_path)
@@ -71,7 +75,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.data:
-        with open(args.data) as f:
+        with open(args.data, encoding="utf-8") as f:
             items = json.load(f)
     elif args.items:
         items = [{"name": n.strip()} for n in args.items.split(",") if n.strip()]

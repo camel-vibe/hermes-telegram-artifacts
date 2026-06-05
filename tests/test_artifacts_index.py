@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import tempfile
 from pathlib import Path
-from unittest import mock
 
 import pytest
 
@@ -76,6 +74,10 @@ class TestRegisterArtifact:
         with pytest.raises(ValueError, match="exceeds maximum size"):
             artifacts_index.register_artifact("Big", "x" * 2_000_000, max_size=1024)
 
+    def test_register_size_limit_raises_specific_type(self):
+        with pytest.raises(artifacts_index.ArtifactTooLargeError):
+            artifacts_index.register_artifact("Big", "x" * 2048, max_size=1024)
+
     def test_register_respects_max_50(self, temp_artifacts_dir):
         for i in range(60):
             artifacts_index.register_artifact(f"Artifact {i}", f"<p>{i}</p>")
@@ -83,6 +85,48 @@ class TestRegisterArtifact:
         assert len(idx["artifacts"]) == 50
         # Most recent should be first
         assert idx["artifacts"][0]["title"] == "Artifact 59"
+
+    def test_trim_deletes_orphaned_files(self, temp_artifacts_dir):
+        # Register one more than the cap; the oldest file must be removed,
+        # not left orphaned on disk.
+        ids = [
+            artifacts_index.register_artifact(f"A{i}", f"<p>{i}</p>")["id"]
+            for i in range(artifacts_index.MAX_ARTIFACTS + 1)
+        ]
+        html_files = list(artifacts_index.ARTIFACTS_DIR.glob("*.html"))
+        assert len(html_files) == artifacts_index.MAX_ARTIFACTS
+        # The very first (oldest) artifact's file is gone.
+        oldest = artifacts_index.ARTIFACTS_DIR / f"{ids[0]}.html"
+        assert not oldest.exists()
+
+    def test_register_with_explicit_id(self, temp_artifacts_dir):
+        entry = artifacts_index.register_artifact(
+            "Titled", "<p>x</p>", artifact_id="myid123"
+        )
+        assert entry["id"] == "myid123"
+        assert (artifacts_index.ARTIFACTS_DIR / "myid123.html").exists()
+        idx = artifacts_index.load_index()
+        assert idx["artifacts"][0]["id"] == "myid123"
+
+    def test_register_explicit_id_dedups(self, temp_artifacts_dir):
+        artifacts_index.register_artifact("First", "<p>1</p>", artifact_id="dup1")
+        artifacts_index.register_artifact("Second", "<p>2</p>", artifact_id="dup1")
+        idx = artifacts_index.load_index()
+        matching = [a for a in idx["artifacts"] if a["id"] == "dup1"]
+        assert len(matching) == 1
+        assert matching[0]["title"] == "Second"
+        # Only one file on disk for that id.
+        data, _ = artifacts_index.get_artifact("dup1")
+        assert data == b"<p>2</p>"
+
+    def test_register_explicit_non_alnum_id_rejected(self, temp_artifacts_dir):
+        with pytest.raises(ValueError, match="alphanumeric"):
+            artifacts_index.register_artifact("Bad", "<p>x</p>", artifact_id="a/b")
+
+    def test_save_index_is_atomic_no_temp_left(self, temp_artifacts_dir):
+        artifacts_index.save_index({"artifacts": [{"id": "x", "title": "t"}]})
+        leftovers = list(artifacts_index.ARTIFACTS_DIR.glob("*.tmp"))
+        assert leftovers == []
 
 
 class TestGetArtifact:

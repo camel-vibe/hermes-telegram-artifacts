@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import tempfile
-from http.server import HTTPServer
 from io import BytesIO
 from pathlib import Path
 from unittest import mock

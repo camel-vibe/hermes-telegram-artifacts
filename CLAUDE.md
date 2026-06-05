@@ -3,11 +3,13 @@
 ## Architecture
 Standalone toolkit for serving interactive HTML artifacts through Telegram bots as Mini Apps.
 
-- `scripts/artifact-server.py` — stdlib HTTP server (port 9877), stores artifacts in `~/.hermes/artifacts/`
+- `scripts/artifact_server.py` — stdlib threaded HTTP server (port 9877), stores artifacts in `~/.hermes/artifacts/`. `artifact-server.py` is a symlink to it (the documented CLI entry point); the underscore name is the importable module.
+- `scripts/artifacts_index.py` — shared, file-locked index operations (register/list/get/delete) with atomic writes and orphan-file cleanup; imported by the server and `deliver-artifact.py`
+- `scripts/artifact_escape.py` — HTML/JS escaping helpers shared by the `generate-*` scripts (prevents `</script>` breakout and quote-breakage)
 - `scripts/send-artifact.py` — one-shot: register HTML + send web_app button via Bot API
-- `scripts/deliver-artifact.py` — save HTML to artifacts dir (no API call)
+- `scripts/deliver-artifact.py` — save HTML under a given id + register it (no API call)
 - `scripts/register-artifact.py` — register via HTTP (no Telegram send)
-- `scripts/generate-artifact.py` — generate HTML from structured JSON (itinerary, report, comparison, etc.)
+- `scripts/generate-artifact.py` — generate HTML from structured JSON (itinerary, report, comparison, etc.); plus `generate-{csv-viewer,markdown-viewer,recipe,shopping-list}.py`
 - `templates/` — HTML templates with `{{PLACEHOLDER}}` tokens
 - `references/` — design system, Mini App API, delivery patterns
 

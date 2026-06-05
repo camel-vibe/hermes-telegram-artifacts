@@ -2,11 +2,15 @@
 """Save an artifact HTML file and register it in the index.
 
 Usage:
-  python3 deliver-artifact.py <artifact_id> <html_file>
-  python3 deliver-artifact.py <artifact_id> -          # read from stdin
+  python3 deliver-artifact.py <artifact_id> <html_file> [title]
+  python3 deliver-artifact.py <artifact_id> -            # read from stdin
 
-This script saves the file and updates the index so the artifact server
-can list it. Uses the shared artifacts_index module with file locking.
+Saves the HTML under the GIVEN artifact id and updates the index so the
+artifact server can list and serve it. The id must be alphanumeric (the same
+ids the server generates). Uses the shared artifacts_index module, which
+writes the file and updates the index atomically under a file lock.
+
+No Telegram API call is made — this only writes to ~/.hermes/artifacts/.
 """
 
 from __future__ import annotations
@@ -24,8 +28,7 @@ def main() -> None:
 
     artifact_id: str = sys.argv[1]
     html_path: str = sys.argv[2]
-
-    ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
+    title: str = sys.argv[3] if len(sys.argv) > 3 else artifact_id
 
     # Read HTML
     if html_path == "-":
@@ -37,17 +40,16 @@ def main() -> None:
             sys.exit(1)
         html = source.read_text(encoding="utf-8")
 
-    # Write to the artifact path with the given ID
-    out = ARTIFACTS_DIR / f"{artifact_id}.html"
-    out.write_text(html, encoding="utf-8")
-
-    # Register via shared module (thread-safe with file locking)
+    # Register under the requested id. register_artifact writes the file and
+    # the index entry atomically; passing artifact_id keeps the id stable.
     try:
-        entry = register_artifact(artifact_id, html)
-        print(f"OK id={entry['id']} path={out}")
+        entry = register_artifact(title, html, artifact_id=artifact_id)
     except ValueError as e:
         print(f"ERROR: {e}", file=sys.stderr)
         sys.exit(1)
+
+    out = ARTIFACTS_DIR / f"{entry['id']}.html"
+    print(f"OK id={entry['id']} path={out}")
 
 
 if __name__ == "__main__":

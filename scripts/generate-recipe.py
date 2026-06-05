@@ -45,6 +45,8 @@ import re
 import sys
 from pathlib import Path
 
+from artifact_escape import js_json, js_number, js_str
+
 TEMPLATE_DIR = Path(__file__).parent.parent / "templates"
 TEMPLATE_PATH = TEMPLATE_DIR / "recipe.html"
 
@@ -53,17 +55,21 @@ def build_sections_js(sections):
     lines = []
     for section in sections:
         lines.append("    {")
-        lines.append("      name: " + json.dumps(section["name"]) + ",")
+        lines.append("      name: " + js_json(section["name"]) + ",")
         lines.append("      items: [")
         for item in section["items"]:
             parts = []
-            parts.append("        { name: " + json.dumps(item["name"]))
-            if "amount" in item and item["amount"] is not None:
-                parts.append(", amount: " + str(item["amount"]))
-            if "unit" in item and item["unit"]:
-                parts.append(", unit: " + json.dumps(item["unit"]))
-            if "note" in item and item["note"]:
-                parts.append(", note: " + json.dumps(item["note"]))
+            parts.append("        { name: " + js_json(item["name"]))
+            amount = item.get("amount")
+            if amount is not None and amount != "":
+                # The template multiplies amount by the scale factor, so it must
+                # be a bare numeric literal. js_number coerces non-numeric input
+                # to 0, which the template renders as "no amount".
+                parts.append(", amount: " + js_number(amount))
+            if item.get("unit"):
+                parts.append(", unit: " + js_json(item["unit"]))
+            if item.get("note"):
+                parts.append(", note: " + js_json(item["note"]))
             parts.append(" },")
             lines.append("".join(parts))
         lines.append("      ]")
@@ -75,15 +81,19 @@ def build_steps_js(steps):
     lines = []
     for step in steps:
         timer = step.get("timer", 0)
-        if timer:
-            lines.append('    { text: ' + json.dumps(step["text"]) + ', timer: ' + str(timer) + ' },')
+        try:
+            timer_secs = int(float(timer))
+        except (TypeError, ValueError):
+            timer_secs = 0
+        if timer_secs > 0:
+            lines.append("    { text: " + js_json(step["text"]) + ", timer: " + str(timer_secs) + " },")
         else:
-            lines.append('    { text: ' + json.dumps(step["text"]) + ' },')
+            lines.append("    { text: " + js_json(step["text"]) + " },")
     return "\n".join(lines)
 
 
 def build_notes_js(notes):
-    return ", ".join(json.dumps(n) for n in notes)
+    return ", ".join(js_json(n) for n in notes)
 
 
 def generate(data, storage_key=None):
@@ -100,22 +110,24 @@ def generate(data, storage_key=None):
     if not storage_key:
         storage_key = "recipe_" + re.sub(r"[^a-z0-9]+", "_", title.lower()).strip("_")
 
-    with open(TEMPLATE_PATH, "r") as f:
+    with open(TEMPLATE_PATH, "r", encoding="utf-8") as f:
         template = f.read()
 
-    html = template.replace("{{TITLE}}", title)
-    html = html.replace("{{SERVINGS}}", str(servings))
-    html = html.replace("{{PREP_TIME}}", prep_time)
-    html = html.replace("{{COOK_TIME}}", cook_time)
-    html = html.replace("{{TOTAL_TIME}}", total_time)
-    html = html.replace("{{DIFFICULTY}}", difficulty)
+    # Title/time/difficulty go into single-quoted JS strings; servings into a
+    # bare numeric literal (the template scales it); storage_key is [a-z0-9_].
+    html = template.replace("{{TITLE}}", js_str(title))
+    html = html.replace("{{SERVINGS}}", js_number(servings, default="4"))
+    html = html.replace("{{PREP_TIME}}", js_str(prep_time))
+    html = html.replace("{{COOK_TIME}}", js_str(cook_time))
+    html = html.replace("{{TOTAL_TIME}}", js_str(total_time))
+    html = html.replace("{{DIFFICULTY}}", js_str(difficulty))
     html = html.replace("{{STORAGE_KEY}}", storage_key)
     html = html.replace("{{SECTIONS_JSON}}", build_sections_js(sections))
     html = html.replace("{{STEPS_JSON}}", build_steps_js(steps))
     html = html.replace("{{NOTES_JSON}}", build_notes_js(notes))
 
     out_path = Path("/tmp") / f"recipe-{storage_key}.html"
-    with open(out_path, "w") as f:
+    with open(out_path, "w", encoding="utf-8") as f:
         f.write(html)
 
     return str(out_path)
@@ -140,7 +152,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.data:
-        with open(args.data) as f:
+        with open(args.data, encoding="utf-8") as f:
             data = json.load(f)
     elif args.title:
         data = {
