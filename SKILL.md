@@ -8,6 +8,8 @@ metadata:
   hermes:
     tags: [artifacts, visualization, mini-app, dashboard, charts, interactive, diagrams, recipes, cooking, food, shopping-lists, personal-tools, calculators]
     category: creative
+license: MIT
+metadata.hermes.tags: []
 ---
 
 # Artifact Builder
