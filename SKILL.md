@@ -1,14 +1,14 @@
 ---
-name: artifact-builder
-description: "Build interactive HTML artifacts for the Telegram Mini App. Use for ANYTHING that benefits from being visual/interactive: recipes (with portion calculators), shopping lists (with localStorage), calculators, charts, diagrams, reference sheets, reports, and tools. When a user asks for food, recipes, meal planning, shopping, groceries, or anything that could be an interactive widget — build an artifact."
-version: 2.7.0
-author: hermes
-platforms: [linux]
+name: "artifact-builder"
+description: "Use when build interactive HTML artifacts for the Telegram Mini App. Use for ANYTHING that benefits from being visual/interactive: recipes (with portion calculators), shopping lists (with localStorage), calculators, charts, diagrams, reference sheets, reports, and tools. When a user asks for food, recipes, meal planning, shopping, groceries, or anything that could be an interactive widget \u2014 build an artifact."
+version: "2.7.0"
+author: "hermes"
+platforms: ["linux"]
 metadata:
   hermes:
-    tags: [artifacts, visualization, mini-app, dashboard, charts, interactive, diagrams, recipes, cooking, food, shopping-lists, personal-tools, calculators]
-    category: creative
----
+    tags: ["artifacts", "visualization", "mini-app", "dashboard", "charts", "interactive", "diagrams", "recipes", "cooking", "food", "shopping-lists", "personal-tools", "calculators"]
+    category: "creative"
+----
 
 # Artifact Builder
 
